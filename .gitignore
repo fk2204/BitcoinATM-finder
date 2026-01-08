@@ -1,0 +1,28 @@
+# Environment variables (contains API key)
+.env
+
+# Cache files
+cache_*.json
+
+# Output data (optional - remove these lines if you want to share data)
+*.csv
+bitcoin_atm_opportunities_map.html
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
