@@ -22,7 +22,6 @@ BUSINESS_TYPES = [
     "smoke_shop",
     "convenience_store",
     "gas_station",
-    "liquor_store",
     "grocery_or_supermarket"  # Covers bodegas
 ]
 
@@ -31,7 +30,6 @@ SEARCH_KEYWORDS = [
     "smoke shop Miami",
     "convenience store Miami",
     "gas station Miami",
-    "liquor store Miami",
     "bodega Miami",
     "corner store Miami"
 ]

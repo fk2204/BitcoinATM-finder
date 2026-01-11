@@ -1,4 +1,4 @@
-"""Scraper for existing Bitcoin ATM locations from CoinATMRadar."""
+"""Scraper for existing Bitcoin ATM locations using Google Places API."""
 
 import requests
 from bs4 import BeautifulSoup
@@ -10,19 +10,20 @@ import config
 
 
 class ATMScraper:
-    """Scrapes Bitcoin ATM locations from CoinATMRadar.com."""
+    """Scrapes Bitcoin ATM locations using Google Places API."""
 
-    BASE_URL = "https://coinatmradar.com"
-    MIAMI_URL = "https://coinatmradar.com/city/52/bitcoin-atm-miami/"
-    HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-    }
+    PLACES_TEXT_URL = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+    PLACES_NEARBY_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+
+    # Known Bitcoin ATM operators
+    OPERATORS = [
+        "Bitcoin Depot", "CoinFlip", "Coinhub", "Coinme", "DigitalMint",
+        "Bitstop", "Athena Bitcoin", "RockItCoin", "Bitcoin of America",
+        "Hippo Kiosk", "Coin Cloud", "Byte Federal", "LibertyX", "Pelicoin"
+    ]
 
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update(self.HEADERS)
+        self.api_key = config.GOOGLE_API_KEY
         self.atm_locations = []
 
     def get_page(self, url: str) -> Optional[BeautifulSoup]:
@@ -130,155 +131,98 @@ class ATMScraper:
 
         return details
 
-    def scrape_miami_atms_api(self) -> list:
-        """Try to scrape ATMs using the API endpoint if available."""
-        api_urls = [
-            "https://coinatmradar.com/api/v1/atms/?city=miami",
-            "https://coinatmradar.com/api/atms?city=52",
-        ]
+    def search_text(self, query: str) -> list:
+        """Search for places using a text query via Google Places API."""
+        if not self.api_key:
+            print("No Google API key configured")
+            return []
 
-        for url in api_urls:
-            try:
-                response = self.session.get(url, timeout=30)
-                if response.status_code == 200:
-                    data = response.json()
-                    if isinstance(data, list):
-                        return data
-                    elif isinstance(data, dict) and "atms" in data:
-                        return data["atms"]
-            except Exception:
-                continue
+        params = {
+            "query": query,
+            "key": self.api_key
+        }
 
-        return []
+        all_results = []
+
+        while True:
+            response = requests.get(self.PLACES_TEXT_URL, params=params)
+            data = response.json()
+
+            if data.get("status") not in ["OK", "ZERO_RESULTS"]:
+                print(f"API Error: {data.get('status')} - {data.get('error_message', '')}")
+                break
+
+            results = data.get("results", [])
+            all_results.extend(results)
+
+            next_page_token = data.get("next_page_token")
+            if next_page_token:
+                time.sleep(2)
+                params = {"pagetoken": next_page_token, "key": self.api_key}
+            else:
+                break
+
+        return all_results
 
     def scrape_miami_atms(self) -> list:
-        """Scrape all Bitcoin ATM locations in Miami."""
+        """Scrape all Bitcoin ATM locations in Miami using Google Places API."""
         print("=" * 50)
-        print("Scraping Bitcoin ATM locations from CoinATMRadar")
+        print("Scraping Bitcoin ATM locations via Google Places API")
         print("=" * 50)
 
         all_atms = []
+        seen_place_ids = set()
 
-        # Try API first
-        print("\nTrying API endpoint...")
-        api_atms = self.scrape_miami_atms_api()
-        if api_atms:
-            print(f"Found {len(api_atms)} ATMs via API")
-            for atm in api_atms:
-                all_atms.append({
-                    "location_name": atm.get("name", atm.get("location_name", "")),
-                    "address": atm.get("address", ""),
-                    "operator": atm.get("operator", atm.get("brand", "")),
-                    "latitude": atm.get("lat", atm.get("latitude")),
-                    "longitude": atm.get("lng", atm.get("longitude")),
-                })
-            self.atm_locations = all_atms
-            return all_atms
+        # Search queries for Bitcoin ATMs
+        search_queries = [
+            "bitcoin atm Miami",
+            "crypto atm Miami",
+            "Bitcoin Depot Miami",
+            "CoinFlip Miami",
+            "Coinhub Miami",
+            "Athena Bitcoin Miami",
+            "bitcoin kiosk Miami"
+        ]
 
-        # Fallback to web scraping
-        print("\nScraping website...")
-        page_num = 1
-        base_url = self.MIAMI_URL
+        for query in search_queries:
+            print(f"\nSearching: {query}")
+            results = self.search_text(query)
+            print(f"  Found {len(results)} results")
 
-        while True:
-            url = base_url if page_num == 1 else f"{base_url}?page={page_num}"
-            print(f"Fetching page {page_num}: {url}")
-
-            soup = self.get_page(url)
-            if not soup:
-                break
-
-            # Find all ATM links on the page
-            atm_links = soup.find_all("a", href=re.compile(r"/bitcoin_atm/\d+/"))
-
-            if not atm_links:
-                print(f"No more ATMs found on page {page_num}")
-                break
-
-            seen_urls = set()
-            for link in atm_links:
-                href = link.get("href", "")
-                if href in seen_urls:
+            for place in results:
+                place_id = place.get("place_id")
+                if place_id in seen_place_ids:
                     continue
-                seen_urls.add(href)
+                seen_place_ids.add(place_id)
 
-                full_url = f"{self.BASE_URL}{href}" if not href.startswith("http") else href
-
-                # Extract basic info from the link
-                atm_info = {
-                    "detail_url": full_url,
-                    "location_name": "",
-                    "address": "",
-                    "operator": "",
-                    "latitude": None,
-                    "longitude": None
-                }
-
-                # Try to get info from parent elements
-                parent = link.find_parent("div", class_=re.compile(r"atm|machine|location|item"))
-                if parent:
-                    name_elem = parent.find(class_=re.compile(r"name|title"))
-                    if name_elem:
-                        atm_info["location_name"] = name_elem.get_text(strip=True)
-
-                    addr_elem = parent.find(class_=re.compile(r"address"))
-                    if addr_elem:
-                        atm_info["address"] = addr_elem.get_text(strip=True)
-
-                    op_elem = parent.find(class_=re.compile(r"operator|brand"))
-                    if op_elem:
-                        atm_info["operator"] = op_elem.get_text(strip=True)
-
-                # If we don't have the name, use link text
-                if not atm_info["location_name"]:
-                    atm_info["location_name"] = link.get_text(strip=True)
-
-                all_atms.append(atm_info)
-
-            print(f"  Found {len(seen_urls)} ATM links on this page")
-
-            # Check for next page
-            next_page = soup.find("a", text=re.compile(r"next|›|>>")) or \
-                        soup.find("a", class_=re.compile(r"next"))
-            if not next_page:
-                break
-
-            page_num += 1
-            time.sleep(1)  # Be polite
-
-            # Safety limit
-            if page_num > 50:
-                print("Reached page limit, stopping")
-                break
-
-        # Deduplicate by URL
-        seen = set()
-        unique_atms = []
-        for atm in all_atms:
-            url = atm.get("detail_url", "")
-            if url not in seen:
-                seen.add(url)
-                unique_atms.append(atm)
+                name = place.get("name", "").lower()
+                # Only include actual Bitcoin ATMs
+                if any(kw in name for kw in ["bitcoin", "crypto", "btc", "atm", "coinflip", "coinhub", "bitcoin depot", "athena"]):
+                    location = place.get("geometry", {}).get("location", {})
+                    atm_info = {
+                        "location_name": place.get("name", ""),
+                        "address": place.get("formatted_address", place.get("vicinity", "")),
+                        "operator": self._detect_operator(place.get("name", "")),
+                        "latitude": location.get("lat"),
+                        "longitude": location.get("lng"),
+                        "place_id": place_id
+                    }
+                    all_atms.append(atm_info)
 
         print(f"\n{'=' * 50}")
-        print(f"Total unique ATMs found: {len(unique_atms)}")
+        print(f"Total unique Bitcoin ATMs found: {len(all_atms)}")
         print("=" * 50)
 
-        # Get detailed info for ATMs missing coordinates
-        print("\nFetching detailed ATM information...")
-        for i, atm in enumerate(unique_atms):
-            if not atm.get("latitude") and atm.get("detail_url"):
-                details = self.get_atm_details(atm["detail_url"])
-                if details:
-                    atm.update(details)
+        self.atm_locations = all_atms
+        return all_atms
 
-                if (i + 1) % 10 == 0:
-                    print(f"  Processed {i + 1}/{len(unique_atms)} ATMs...")
-
-                time.sleep(0.5)  # Rate limiting
-
-        self.atm_locations = unique_atms
-        return unique_atms
+    def _detect_operator(self, name: str) -> str:
+        """Detect the ATM operator from the location name."""
+        name_lower = name.lower()
+        for operator in self.OPERATORS:
+            if operator.lower() in name_lower:
+                return operator
+        return "Unknown"
 
     def get_known_operators(self) -> list:
         """Return list of known Bitcoin ATM operators."""

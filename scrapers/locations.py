@@ -118,30 +118,50 @@ class LocationScraper:
 
     def determine_business_type(self, types: list, business_name: str = "") -> str:
         """Determine the primary business type from Google's type list and business name."""
-        # First, check business name for specific keywords (more accurate)
         name_lower = business_name.lower()
 
-        # Smoke/Vape shops - check name first as Google often misclassifies these
+        # EXCLUDE places that are clearly not retail (restaurants, hotels, bars, etc.)
+        excluded_google_types = [
+            "restaurant", "bar", "night_club", "lodging", "hotel", "hospital",
+            "school", "university", "church", "courthouse", "lawyer", "doctor",
+            "real_estate_agency", "apartment", "gym", "spa", "salon", "bank",
+            "insurance_agency", "car_dealer", "car_rental", "parking"
+        ]
+        if any(t in excluded_google_types for t in types):
+            return "Exclude"
+
+        # Exclude by name keywords (restaurants, hotels, bars, courts, etc.)
+        exclude_name_keywords = [
+            "hotel", "inn ", " inn", "suites", "resort", "motel",
+            "restaurant", "grill", "steakhouse", "seafood", "kitchen", "bistro", "cafe", "diner",
+            "bar ", " bar", "pub ", " pub", "lounge", "tavern", "brewery",
+            "honorable", "judge", "court", "attorney", "law office",
+            "college", "university", "school", "academy",
+            "hospital", "clinic", "medical", "dental",
+            "church", "temple", "mosque",
+            "apartment", "condo", "realty", "real estate",
+            "yacht", "charter", "cruise",
+            "arena", "stadium", "center"
+        ]
+        if any(kw in name_lower for kw in exclude_name_keywords):
+            return "Exclude"
+
+        # Smoke/Vape shops - MUST have keyword in business name
         if any(kw in name_lower for kw in ["smoke", "vape", "tobacco", "cigar", "hookah"]):
             return "Smoke Shop"
 
-        # Liquor stores
-        if any(kw in name_lower for kw in ["liquor", "wine", "spirits", "beer"]):
-            return "Liquor Store"
-
         # Bodegas/Corner stores
-        if any(kw in name_lower for kw in ["bodega", "deli", "market", "mini mart", "minimart"]):
+        if any(kw in name_lower for kw in ["bodega", "deli", "mini mart", "minimart", "corner store"]):
             return "Bodega"
 
         # Gas stations
-        if any(kw in name_lower for kw in ["gas", "fuel", "shell", "chevron", "exxon", "mobil", "bp ", "citgo", "marathon", "sunoco", "speedway", "wawa", "racetrac", "7-eleven", "7 eleven"]):
+        if any(kw in name_lower for kw in ["gas", "fuel", "shell", "chevron", "exxon", "mobil", "bp ", "citgo", "marathon", "sunoco", "speedway", "wawa", "racetrac", "7-eleven", "7 eleven", "circle k"]):
             return "Gas Station"
 
         # Fall back to Google's type mapping
         type_mapping = {
             "gas_station": "Gas Station",
             "convenience_store": "Convenience Store",
-            "liquor_store": "Liquor Store",
             "grocery_or_supermarket": "Grocery/Bodega",
             "supermarket": "Grocery/Bodega",
             "store": "Convenience Store"
@@ -178,6 +198,8 @@ class LocationScraper:
                     seen_place_ids.add(place_id)
                     business_name = place.get("name", "")
                     business_type = self.determine_business_type(place.get("types", []), business_name)
+                    if business_type == "Exclude":
+                        continue  # Skip restaurants, hotels, bars, etc.
                     if business_type == "Other":
                         business_type = place_type.replace("_", " ").title()
                     parsed = self.parse_place(place, business_type)
@@ -195,14 +217,12 @@ class LocationScraper:
                     seen_place_ids.add(place_id)
                     business_name = place.get("name", "")
                     business_type = self.determine_business_type(place.get("types", []), business_name)
+                    if business_type == "Exclude":
+                        continue  # Skip restaurants, hotels, bars, etc.
                     if business_type == "Other":
-                        # Infer from keyword
-                        if "smoke" in keyword.lower():
-                            business_type = "Smoke Shop"
-                        elif "bodega" in keyword.lower() or "corner" in keyword.lower():
+                        # Infer from keyword - but only for valid retail types
+                        if "bodega" in keyword.lower() or "corner" in keyword.lower():
                             business_type = "Bodega"
-                        elif "liquor" in keyword.lower():
-                            business_type = "Liquor Store"
                         elif "gas" in keyword.lower():
                             business_type = "Gas Station"
                         else:
