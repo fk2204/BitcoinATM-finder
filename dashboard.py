@@ -318,7 +318,17 @@ DASHBOARD_TEMPLATE = """
 @app.route("/")
 def index():
     """Main dashboard page."""
+    # Debug logging
+    with open('C:/Users/fkozi/BitcoinATM-finder/debug_request.log', 'w') as dbg:
+        dbg.write(f'DATA_FILE: {DATA_FILE}\n')
+        dbg.write(f'File exists: {os.path.exists(DATA_FILE)}\n')
+        dbg.write(f'CWD: {os.getcwd()}\n')
+
     df = load_data()
+
+    with open('C:/Users/fkozi/BitcoinATM-finder/debug_request.log', 'a') as dbg:
+        dbg.write(f'DataFrame empty: {df.empty}\n')
+        dbg.write(f'DataFrame len: {len(df)}\n')
 
     if df.empty:
         return """

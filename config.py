@@ -42,8 +42,9 @@ COINATMRADAR_URL = "https://coinatmradar.com/city/52/bitcoin-atm-miami/"
 # Distance threshold (in km) - locations closer than this to an ATM are less desirable
 MIN_DISTANCE_FROM_ATM = 0.5  # 500 meters
 
-# CSV output file
-OUTPUT_CSV = "bitcoin_atm_opportunities.csv"
+# CSV output file - use absolute path
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_CSV = os.path.join(_BASE_DIR, "bitcoin_atm_opportunities.csv")
 
 # Dashboard settings
 DASHBOARD_PORT = 5000

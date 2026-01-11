@@ -116,8 +116,28 @@ class LocationScraper:
             "types": place.get("types", [])
         }
 
-    def determine_business_type(self, types: list) -> str:
-        """Determine the primary business type from Google's type list."""
+    def determine_business_type(self, types: list, business_name: str = "") -> str:
+        """Determine the primary business type from Google's type list and business name."""
+        # First, check business name for specific keywords (more accurate)
+        name_lower = business_name.lower()
+
+        # Smoke/Vape shops - check name first as Google often misclassifies these
+        if any(kw in name_lower for kw in ["smoke", "vape", "tobacco", "cigar", "hookah"]):
+            return "Smoke Shop"
+
+        # Liquor stores
+        if any(kw in name_lower for kw in ["liquor", "wine", "spirits", "beer"]):
+            return "Liquor Store"
+
+        # Bodegas/Corner stores
+        if any(kw in name_lower for kw in ["bodega", "deli", "market", "mini mart", "minimart"]):
+            return "Bodega"
+
+        # Gas stations
+        if any(kw in name_lower for kw in ["gas", "fuel", "shell", "chevron", "exxon", "mobil", "bp ", "citgo", "marathon", "sunoco", "speedway", "wawa", "racetrac", "7-eleven", "7 eleven"]):
+            return "Gas Station"
+
+        # Fall back to Google's type mapping
         type_mapping = {
             "gas_station": "Gas Station",
             "convenience_store": "Convenience Store",
@@ -156,7 +176,8 @@ class LocationScraper:
                 place_id = place.get("place_id")
                 if place_id and place_id not in seen_place_ids:
                     seen_place_ids.add(place_id)
-                    business_type = self.determine_business_type(place.get("types", []))
+                    business_name = place.get("name", "")
+                    business_type = self.determine_business_type(place.get("types", []), business_name)
                     if business_type == "Other":
                         business_type = place_type.replace("_", " ").title()
                     parsed = self.parse_place(place, business_type)
@@ -172,7 +193,8 @@ class LocationScraper:
                 place_id = place.get("place_id")
                 if place_id and place_id not in seen_place_ids:
                     seen_place_ids.add(place_id)
-                    business_type = self.determine_business_type(place.get("types", []))
+                    business_name = place.get("name", "")
+                    business_type = self.determine_business_type(place.get("types", []), business_name)
                     if business_type == "Other":
                         # Infer from keyword
                         if "smoke" in keyword.lower():
