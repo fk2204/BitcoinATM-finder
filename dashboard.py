@@ -8,6 +8,7 @@ from folium.plugins import MarkerCluster
 from flask import Flask, render_template_string, request, jsonify, redirect, url_for
 from collections import Counter
 import config
+from rocketreach_api import RocketReachAPI
 
 app = Flask(__name__)
 
@@ -386,9 +387,14 @@ DASHBOARD_TEMPLATE = """
                                         </td>
                                         <td>
                                             <a href="https://www.google.com/maps/search/?api=1&query={{ row.latitude }},{{ row.longitude }}"
-                                               target="_blank" class="btn btn-sm btn-outline-primary">
+                                               target="_blank" class="btn btn-sm btn-outline-primary" title="View on Map">
                                                 <i class="fas fa-map"></i>
                                             </a>
+                                            <button class="btn btn-sm btn-outline-success ms-1"
+                                                    onclick="lookupContact('{{ row.business_name | e }}', '{{ row.address | e }}')"
+                                                    title="Find Contact Info">
+                                                <i class="fas fa-user-search"></i>
+                                            </button>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -501,6 +507,32 @@ DASHBOARD_TEMPLATE = """
         </div>
     </div>
 
+    <!-- Contact Info Modal -->
+    <div class="modal fade" id="contactModal" tabindex="-1" aria-labelledby="contactModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="contactModalLabel">
+                        <i class="fas fa-address-card"></i> Contact Information
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="contactModalBody">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Searching RocketReach...</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <span class="text-muted me-auto" id="creditInfo"></span>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function updateStatus(index, status) {
@@ -514,6 +546,78 @@ DASHBOARD_TEMPLATE = """
                 if (data.success) {
                     console.log('Status updated');
                 }
+            });
+        }
+
+        function lookupContact(businessName, address) {
+            // Show modal with loading state
+            const modal = new bootstrap.Modal(document.getElementById('contactModal'));
+            document.getElementById('contactModalLabel').innerHTML =
+                '<i class="fas fa-address-card"></i> ' + businessName;
+            document.getElementById('contactModalBody').innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-success" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Searching RocketReach for contacts...</p>
+                </div>
+            `;
+            modal.show();
+
+            // Call API
+            fetch('/lookup_contact', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({business_name: businessName, address: address})
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('contactModalBody').innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i> ${data.error}
+                        </div>
+                    `;
+                    return;
+                }
+
+                if (!data.contacts || data.contacts.length === 0) {
+                    document.getElementById('contactModalBody').innerHTML = `
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> No contacts found for this business.
+                            <p class="mb-0 mt-2">Try searching manually on <a href="https://rocketreach.co/search?keyword=${encodeURIComponent(businessName)}" target="_blank">RocketReach</a></p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '<div class="list-group">';
+                data.contacts.forEach(contact => {
+                    html += `
+                        <div class="list-group-item">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1">${contact.name || 'Unknown'}</h5>
+                                <small class="text-muted">${contact.title || ''}</small>
+                            </div>
+                            <div class="mt-2">
+                                ${contact.email ? `<p class="mb-1"><i class="fas fa-envelope text-primary"></i> <a href="mailto:${contact.email}">${contact.email}</a></p>` : ''}
+                                ${contact.phone ? `<p class="mb-1"><i class="fas fa-phone text-success"></i> <a href="tel:${contact.phone}">${contact.phone}</a></p>` : ''}
+                                ${contact.linkedin ? `<p class="mb-1"><i class="fab fa-linkedin text-info"></i> <a href="${contact.linkedin}" target="_blank">LinkedIn Profile</a></p>` : ''}
+                                ${!contact.email && !contact.phone && !contact.linkedin ? '<p class="text-muted mb-0">No contact details available</p>' : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+
+                document.getElementById('contactModalBody').innerHTML = html;
+            })
+            .catch(error => {
+                document.getElementById('contactModalBody').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-times-circle"></i> Error: ${error.message}
+                    </div>
+                `;
             });
         }
     </script>
@@ -628,6 +732,35 @@ def export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment;filename=bitcoin_atm_opportunities.csv"}
     )
+
+
+@app.route("/lookup_contact", methods=["POST"])
+def lookup_contact():
+    """Look up contact information for a business using RocketReach."""
+    data = request.json
+    business_name = data.get("business_name", "")
+    address = data.get("address", "")
+
+    if not business_name:
+        return jsonify({"error": "Business name required"})
+
+    try:
+        api = RocketReachAPI()
+        result = api.get_contact_info(business_name, address)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+@app.route("/api_status")
+def api_status():
+    """Check RocketReach API status and remaining credits."""
+    try:
+        api = RocketReachAPI()
+        status = api.check_api_status()
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 
 def run_dashboard(port: int = None):

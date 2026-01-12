@@ -8,6 +8,9 @@ load_dotenv()
 # Google Places API Key (get from https://console.cloud.google.com/)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
+# RocketReach API Key (get from https://rocketreach.co/api)
+ROCKETREACH_API_KEY = os.getenv("ROCKETREACH_API_KEY", "")
+
 # Miami, FL coordinates
 MIAMI_CENTER = {
     "lat": 25.7617,
