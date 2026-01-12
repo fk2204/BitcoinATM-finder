@@ -1,16 +1,19 @@
 """Web dashboard for Bitcoin ATM opportunity finder."""
 
 import os
+import json
 import pandas as pd
 import folium
 from folium.plugins import MarkerCluster
 from flask import Flask, render_template_string, request, jsonify, redirect, url_for
+from collections import Counter
 import config
 
 app = Flask(__name__)
 
 # Data storage
 DATA_FILE = config.OUTPUT_CSV
+ATM_CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache_atms.json")
 
 
 def load_data() -> pd.DataFrame:
@@ -18,6 +21,105 @@ def load_data() -> pd.DataFrame:
     if os.path.exists(DATA_FILE):
         return pd.read_csv(DATA_FILE)
     return pd.DataFrame()
+
+
+def load_atm_data() -> list:
+    """Load Bitcoin ATM data from cache."""
+    if os.path.exists(ATM_CACHE_FILE):
+        with open(ATM_CACHE_FILE, 'r') as f:
+            return json.load(f)
+    return []
+
+
+def get_competitor_stats() -> dict:
+    """Calculate competitor statistics."""
+    atms = load_atm_data()
+    if not atms:
+        return {"operators": [], "total": 0, "atm_list": []}
+
+    # Count by operator
+    operators = Counter(atm.get('operator', 'Unknown') for atm in atms)
+    total = len(atms)
+
+    # Build operator list with percentages
+    operator_list = []
+    colors = ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#7C4DFF', '#00BCD4', '#8BC34A']
+    for i, (op, count) in enumerate(operators.most_common()):
+        operator_list.append({
+            "name": op,
+            "count": count,
+            "percentage": round(count / total * 100, 1),
+            "color": colors[i % len(colors)]
+        })
+
+    # Get ATM locations grouped by operator
+    atm_by_operator = {}
+    for atm in atms:
+        op = atm.get('operator', 'Unknown')
+        if op not in atm_by_operator:
+            atm_by_operator[op] = []
+        atm_by_operator[op].append(atm)
+
+    return {
+        "operators": operator_list,
+        "total": total,
+        "atm_list": atms,
+        "atm_by_operator": atm_by_operator
+    }
+
+
+def create_competitor_map(atms: list, selected_operator: str = "all") -> str:
+    """Create a map showing competitor ATM locations."""
+    m = folium.Map(
+        location=[config.MIAMI_CENTER["lat"], config.MIAMI_CENTER["lng"]],
+        zoom_start=11,
+        tiles="cartodbpositron"
+    )
+
+    # Color mapping for operators
+    operator_colors = {
+        "Athena Bitcoin": "red",
+        "Bitcoin Depot": "blue",
+        "Coinhub": "green",
+        "CoinFlip": "orange",
+        "Coinme": "purple",
+        "RockItCoin": "darkred",
+        "LibertyX": "darkblue",
+        "Bitstop": "darkgreen",
+        "Unknown": "gray"
+    }
+
+    marker_cluster = MarkerCluster(name="ATMs").add_to(m)
+
+    for atm in atms:
+        lat = atm.get("latitude")
+        lon = atm.get("longitude")
+        operator = atm.get("operator", "Unknown")
+
+        if not lat or not lon:
+            continue
+
+        if selected_operator != "all" and operator != selected_operator:
+            continue
+
+        color = operator_colors.get(operator, "gray")
+
+        popup_html = f"""
+        <div style="width: 200px;">
+            <h5 style="margin: 0 0 10px 0; color: {color};">{operator}</h5>
+            <p style="margin: 5px 0;"><strong>Location:</strong> {atm.get('location_name', 'N/A')}</p>
+            <p style="margin: 5px 0;"><strong>Address:</strong> {atm.get('address', 'N/A')}</p>
+        </div>
+        """
+
+        folium.Marker(
+            location=[lat, lon],
+            popup=folium.Popup(popup_html, max_width=250),
+            icon=folium.Icon(color=color, icon="bitcoin", prefix="fa"),
+            tooltip=f"{operator}: {atm.get('location_name', 'ATM')}"
+        ).add_to(marker_cluster)
+
+    return m._repr_html_()
 
 
 def save_data(df: pd.DataFrame):
@@ -180,8 +282,8 @@ DASHBOARD_TEMPLATE = """
                             <option value="gas" {{ 'selected' if filter_type == 'gas' else '' }}>Gas Stations</option>
                             <option value="convenience" {{ 'selected' if filter_type == 'convenience' else '' }}>Convenience Stores</option>
                             <option value="smoke" {{ 'selected' if filter_type == 'smoke' else '' }}>Smoke Shops</option>
-                            <option value="liquor" {{ 'selected' if filter_type == 'liquor' else '' }}>Liquor Stores</option>
                             <option value="bodega" {{ 'selected' if filter_type == 'bodega' else '' }}>Bodegas</option>
+                            <option value="grocery" {{ 'selected' if filter_type == 'grocery' else '' }}>Grocery Stores</option>
                         </select>
                     </div>
                     <div class="col-md-3">
@@ -220,6 +322,11 @@ DASHBOARD_TEMPLATE = """
             <li class="nav-item">
                 <a class="nav-link" data-bs-toggle="tab" href="#table-tab">
                     <i class="fas fa-table"></i> Table View
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-bs-toggle="tab" href="#competitors-tab">
+                    <i class="fas fa-chess"></i> Competitors
                 </a>
             </li>
         </ul>
@@ -287,6 +394,106 @@ DASHBOARD_TEMPLATE = """
                                     {% endfor %}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Competitors Tab -->
+            <div class="tab-pane fade" id="competitors-tab">
+                <div class="row">
+                    <!-- Market Share -->
+                    <div class="col-md-4">
+                        <div class="card mb-4">
+                            <div class="card-header bg-dark text-white">
+                                <i class="fas fa-chart-pie"></i> Market Share
+                            </div>
+                            <div class="card-body">
+                                <h4 class="text-center mb-3">{{ competitor_stats.total }} Total ATMs</h4>
+                                {% for op in competitor_stats.operators %}
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <span><strong>{{ op.name }}</strong></span>
+                                        <span>{{ op.count }} ({{ op.percentage }}%)</span>
+                                    </div>
+                                    <div class="progress" style="height: 25px;">
+                                        <div class="progress-bar" role="progressbar"
+                                             style="width: {{ op.percentage }}%; background-color: {{ op.color }};"
+                                             aria-valuenow="{{ op.percentage }}" aria-valuemin="0" aria-valuemax="100">
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Competitor Map -->
+                    <div class="col-md-8">
+                        <div class="card mb-4">
+                            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-map"></i> Competitor Locations</span>
+                                <select id="operatorFilter" class="form-select form-select-sm" style="width: auto;" onchange="filterCompetitorMap(this.value)">
+                                    <option value="all">All Operators</option>
+                                    {% for op in competitor_stats.operators %}
+                                    <option value="{{ op.name }}">{{ op.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="card-body p-0" style="height: 500px;">
+                                {{ competitor_map_html | safe }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Competitor Details -->
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <i class="fas fa-list"></i> Competitor ATM Locations
+                    </div>
+                    <div class="card-body">
+                        <div class="accordion" id="competitorAccordion">
+                            {% for op in competitor_stats.operators %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
+                                            data-bs-target="#collapse{{ loop.index }}" aria-expanded="false">
+                                        <span class="badge me-2" style="background-color: {{ op.color }};">{{ op.count }}</span>
+                                        {{ op.name }}
+                                    </button>
+                                </h2>
+                                <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#competitorAccordion">
+                                    <div class="accordion-body">
+                                        <div class="table-container" style="max-height: 300px;">
+                                            <table class="table table-sm table-striped">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Location</th>
+                                                        <th>Address</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for atm in competitor_stats.atm_by_operator.get(op.name, [])[:20] %}
+                                                    <tr>
+                                                        <td>{{ atm.location_name or 'N/A' }}</td>
+                                                        <td>{{ atm.address or 'N/A' }}</td>
+                                                    </tr>
+                                                    {% endfor %}
+                                                    {% if competitor_stats.atm_by_operator.get(op.name, [])|length > 20 %}
+                                                    <tr>
+                                                        <td colspan="2" class="text-muted text-center">
+                                                            ... and {{ competitor_stats.atm_by_operator.get(op.name, [])|length - 20 }} more locations
+                                                        </td>
+                                                    </tr>
+                                                    {% endif %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
                         </div>
                     </div>
                 </div>
@@ -373,6 +580,10 @@ def index():
     # Convert to records for template
     table_data = filtered_df.head(500).to_dict("records")
 
+    # Get competitor stats
+    competitor_stats = get_competitor_stats()
+    competitor_map_html = create_competitor_map(competitor_stats.get("atm_list", []))
+
     return render_template_string(
         DASHBOARD_TEMPLATE,
         map_html=map_html,
@@ -383,7 +594,9 @@ def index():
         has_atm=has_atm,
         filter_type=filter_type,
         min_score=min_score,
-        show_atm=show_atm
+        show_atm=show_atm,
+        competitor_stats=competitor_stats,
+        competitor_map_html=competitor_map_html
     )
 
 
