@@ -125,7 +125,8 @@ class LocationScraper:
             "restaurant", "bar", "night_club", "lodging", "hotel", "hospital",
             "school", "university", "church", "courthouse", "lawyer", "doctor",
             "real_estate_agency", "apartment", "gym", "spa", "salon", "bank",
-            "insurance_agency", "car_dealer", "car_rental", "parking"
+            "insurance_agency", "car_dealer", "car_rental", "parking",
+            "hair_care", "beauty_salon"
         ]
         if any(t in excluded_google_types for t in types):
             return "Exclude"
@@ -141,7 +142,15 @@ class LocationScraper:
             "church", "temple", "mosque",
             "apartment", "condo", "realty", "real estate",
             "yacht", "charter", "cruise",
-            "arena", "stadium", "center"
+            "arena", "stadium", "center",
+            # Large supermarkets/wholesale - exclude
+            "publix", "walmart", "whole foods", "trader joe", "costco", "sam's club",
+            "bj's", "bj wholesale", "aldi", "kroger", "safeway", "target",
+            "winn-dixie", "winn dixie", "supermarket",
+            # Salons - exclude
+            "hair salon", "nail salon", "beauty salon", "barber", "hair cut",
+            "nails", "spa ", " spa", "massage", "hair extension", "braiding",
+            "lash", "eyebrow", "waxing", "facial", "manicure", "pedicure"
         ]
         if any(kw in name_lower for kw in exclude_name_keywords):
             return "Exclude"

@@ -174,9 +174,12 @@ def create_map(df: pd.DataFrame, filter_type: str = None, min_score: int = 0) ->
                 color = "gray"
             icon = "check"
 
-        # Create popup content
+        # Create popup content with RocketReach button
+        business_name_escaped = str(row.get('business_name', 'Unknown')).replace("'", "\\'").replace('"', '&quot;')
+        address_escaped = str(row.get('address', 'N/A')).replace("'", "\\'").replace('"', '&quot;')
+
         popup_html = f"""
-        <div style="width: 250px;">
+        <div style="width: 280px;">
             <h4 style="margin: 0 0 10px 0;">{row.get('business_name', 'Unknown')}</h4>
             <p style="margin: 5px 0;"><strong>Type:</strong> {row.get('business_type', 'N/A')}</p>
             <p style="margin: 5px 0;"><strong>Address:</strong> {row.get('address', 'N/A')}</p>
@@ -186,7 +189,12 @@ def create_map(df: pd.DataFrame, filter_type: str = None, min_score: int = 0) ->
             <p style="margin: 5px 0;"><strong>Has ATM:</strong> {'Yes' if has_atm else 'No'}</p>
             <p style="margin: 5px 0;"><strong>Nearest ATM:</strong> {row.get('distance_to_nearest_atm', 'N/A')} km</p>
             <p style="margin: 5px 0;"><strong>Score:</strong> {row.get('opportunity_score', 0)}</p>
-            <p style="margin: 5px 0;"><strong>Status:</strong> {row.get('status', 'not_contacted')}</p>
+            <hr style="margin: 10px 0;">
+            <button onclick="parent.lookupContact('{business_name_escaped}', '{address_escaped}')"
+                    style="background-color: #28a745; color: white; border: none; padding: 8px 16px;
+                           border-radius: 5px; cursor: pointer; width: 100%; font-size: 14px;">
+                <i class="fas fa-user-search"></i> Find Contact Info
+            </button>
         </div>
         """
 
