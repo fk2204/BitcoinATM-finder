@@ -288,7 +288,6 @@ DASHBOARD_TEMPLATE = """
                         <label class="form-label">Business Type</label>
                         <select name="filter_type" class="form-select">
                             <option value="all" {{ 'selected' if filter_type == 'all' else '' }}>All Types</option>
-                            <option value="gas" {{ 'selected' if filter_type == 'gas' else '' }}>Gas Stations</option>
                             <option value="convenience" {{ 'selected' if filter_type == 'convenience' else '' }}>Convenience Stores</option>
                             <option value="smoke" {{ 'selected' if filter_type == 'smoke' else '' }}>Smoke Shops</option>
                             <option value="bodega" {{ 'selected' if filter_type == 'bodega' else '' }}>Bodegas</option>

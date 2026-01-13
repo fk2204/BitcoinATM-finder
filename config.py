@@ -24,7 +24,6 @@ SEARCH_RADIUS = 50000
 BUSINESS_TYPES = [
     "smoke_shop",
     "convenience_store",
-    "gas_station",
     "grocery_or_supermarket"  # Covers bodegas
 ]
 
@@ -32,7 +31,6 @@ BUSINESS_TYPES = [
 SEARCH_KEYWORDS = [
     "smoke shop Miami",
     "convenience store Miami",
-    "gas station Miami",
     "bodega Miami",
     "corner store Miami"
 ]

@@ -150,7 +150,13 @@ class LocationScraper:
             # Salons - exclude
             "hair salon", "nail salon", "beauty salon", "barber", "hair cut",
             "nails", "spa ", " spa", "massage", "hair extension", "braiding",
-            "lash", "eyebrow", "waxing", "facial", "manicure", "pedicure"
+            "lash", "eyebrow", "waxing", "facial", "manicure", "pedicure",
+            # Pharmacies/Drug stores - exclude
+            "walgreens", "cvs", "rite aid", "pharmacy",
+            # Gas stations - exclude
+            "gas", "fuel", "shell", "chevron", "exxon", "mobil", "bp ", "citgo",
+            "marathon", "sunoco", "speedway", "wawa", "racetrac", "circle k",
+            "murphy usa", "valero", "texaco", "u gas", "76 ", "arco", "phillips 66"
         ]
         if any(kw in name_lower for kw in exclude_name_keywords):
             return "Exclude"
@@ -163,13 +169,9 @@ class LocationScraper:
         if any(kw in name_lower for kw in ["bodega", "deli", "mini mart", "minimart", "corner store"]):
             return "Bodega"
 
-        # Gas stations
-        if any(kw in name_lower for kw in ["gas", "fuel", "shell", "chevron", "exxon", "mobil", "bp ", "citgo", "marathon", "sunoco", "speedway", "wawa", "racetrac", "7-eleven", "7 eleven", "circle k"]):
-            return "Gas Station"
 
         # Fall back to Google's type mapping
         type_mapping = {
-            "gas_station": "Gas Station",
             "convenience_store": "Convenience Store",
             "grocery_or_supermarket": "Grocery/Bodega",
             "supermarket": "Grocery/Bodega",
